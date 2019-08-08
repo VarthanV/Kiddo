@@ -10,46 +10,46 @@
 static Token *token(TokenType type, char *literal, int line, int column, char *lexeme)
 {
     size_t length = 0;
-    Token *tokn = (Token *)alloc(sizeof(Token));
-    tokn->type = type;
+    Token *token = (Token *)alloc(sizeof(Token));
+    token->type = type;
     if (literal == NULL)
     {
-        tokn->literal = NULL;
+        token->literal = NULL;
     }
     else
     {
         length = strlen(literal) + 1;
-        tokn->literal = (char *)alloc(length);
-        strncpy(tokn->literal, literal, length);
+        token->literal = (char *)alloc(length);
+        strncpy(token->literal, literal, length);
     }
     if (lexeme == NULL)
     {
-        tokn->lexeme = NULL;
+        token->lexeme = NULL;
     }
     else
     {
         length = strlen(lexeme) + 1;
-        tokn->lexeme = (char *)alloc(length);
-        strncpy(tokn->lexeme, lexeme, length);
+        token->lexeme = (char *)alloc(length);
+        strncpy(token->lexeme, lexeme, length);
     }
-    tokn->line = line;
-    tokn->column = column;
-    return tokn;
+    token->line = line;
+    token->column = column;
+    return token;
 }
 
-static Token *token_simple(TokenType type, int line, int column, char *lexeme)
+static Token *tokenSimple(TokenType type, int line, int column, char *lexeme)
 {
     return token(type, NULL, line, column, lexeme);
 }
 
-static void token_destroy(Token *tokn)
+static void token_destroy(Token *token)
 {
-    fr(tokn->literal);
-    fr(tokn->lexeme);
-    fr(tokn);
+    fr(token->literal);
+    fr(token->lexeme);
+    fr(token);
 }
 
-static void toknzr_error(int line, int column, char c)
+static void toknzrError(int line, int column, char c)
 {
     char buf[LINEBUFSIZE];
     memset(buf, 0, LINEBUFSIZE);
@@ -115,7 +115,7 @@ static char *read_other(const char *code, size_t codeLength, int *current)
 Tokenization toknzr(const char *code, int verbose)
 {
     char *literal = NULL;
-    Token *tokn = NULL;
+    Token *token = NULL;
     TokenType type = TOKEN_ENDOFFILE;
     size_t length = strlen(code);
     int current = 0, start = 0, line = 1;
@@ -128,50 +128,50 @@ Tokenization toknzr(const char *code, int verbose)
         switch (c)
         {
         case '(':
-            tokn = token_simple(TOKEN_LEFT_PAREN, line, current, (char *)"(");
+            token = token_simple(TOKEN_LEFT_PAREN, line, current, (char *)"(");
             break;
         case ')':
-            tokn = token_simple(TOKEN_RIGHT_PAREN, line, current, (char *)")");
+            token = token_simple(TOKEN_RIGHT_PAREN, line, current, (char *)")");
             break;
         case '{':
-            tokn = token_simple(TOKEN_LEFT_BRACE, line, current, (char *)"{");
+            token = token_simple(TOKEN_LEFT_BRACE, line, current, (char *)"{");
             break;
         case '}':
-            tokn = token_simple(TOKEN_RIGHT_BRACE, line, current, (char *)"}");
+            token = token_simple(TOKEN_RIGHT_BRACE, line, current, (char *)"}");
             break;
         case ',':
-            tokn = token_simple(TOKEN_COMMA, line, current, (char *)",");
+            token = token_simple(TOKEN_COMMA, line, current, (char *)",");
             break;
         case '.':
-            tokn = token_simple(TOKEN_DOT, line, current, (char *)".");
+            token = token_simple(TOKEN_DOT, line, current, (char *)".");
             break;
         case '-':
-            tokn = token_simple(TOKEN_MINUS, line, current, (char *)"-");
+            token = token_simple(TOKEN_MINUS, line, current, (char *)"-");
             break;
         case '+':
-            tokn = token_simple(TOKEN_PLUS, line, current, (char *)"+");
+            token = token_simple(TOKEN_PLUS, line, current, (char *)"+");
             break;
         case ';':
-            tokn = token_simple(TOKEN_SEMICOLON, line, current, (char *)";");
+            token = token_simple(TOKEN_SEMICOLON, line, current, (char *)";");
             break;
         case '*':
-            tokn = token_simple(TOKEN_STAR, line, current, (char *)"*");
+            token = token_simple(TOKEN_STAR, line, current, (char *)"*");
             break;
         case '!':
             type = match_next(code, '=', length, &current) ? TOKEN_BANG_EQUAL : TOKEN_BANG;
-            tokn = token_simple(type, line, current, (char *)"!");
+            token = token_simple(type, line, current, (char *)"!");
             break;
         case '=':
             type = match_next(code, '=', length, &current) ? TOKEN_EQUAL_EQUAL : TOKEN_EQUAL;
-            tokn = token_simple(type, line, current, (char *)"=");
+            token = token_simple(type, line, current, (char *)"=");
             break;
         case '>':
             type = match_next(code, '=', length, &current) ? TOKEN_GREATER_EQUAL : TOKEN_GREATER;
-            tokn = token_simple(type, line, current, (char *)">");
+            token = token_simple(type, line, current, (char *)">");
             break;
         case '<':
             type = match_next(code, '=', length, &current) ? TOKEN_LESS_EQUAL : TOKEN_LESS;
-            tokn = token_simple(type, line, current, (char *)"<");
+            token = token_simple(type, line, current, (char *)"<");
             break;
         case '/':
             type = match_next(code, '/', length, &current) ? TOKEN_ENDOFFILE : TOKEN_SLASH;
@@ -184,7 +184,7 @@ Tokenization toknzr(const char *code, int verbose)
             }
             else
             {
-                tokn = token_simple(TOKEN_SLASH, line, current, (char *)"/");
+                token = token_simple(TOKEN_SLASH, line, current, (char *)"/");
             }
             break;
         case '"':
@@ -205,7 +205,7 @@ Tokenization toknzr(const char *code, int verbose)
                 }
                 else
                 {
-                    tokn = token_simple(TOKEN_ERROR, line, current, "Unterminated string.");
+                    token = token_simple(TOKEN_ERROR, line, current, "Unterminated string.");
                 }
             }
             else
@@ -215,7 +215,7 @@ Tokenization toknzr(const char *code, int verbose)
                 literal[current - start - 1] = 0;
                 if (literal != NULL)
                 {
-                    tokn = token(TOKEN_STRING, literal, line, current, literal);
+                    token = token(TOKEN_STRING, literal, line, current, literal);
                 }
             }
             break;
@@ -230,66 +230,66 @@ Tokenization toknzr(const char *code, int verbose)
             if (isdigit(c))
             {
                 literal = read_number(code, length, &current);
-                tokn = token(TOKEN_NUMBER, literal, line, current, literal);
+                token = token(TOKEN_NUMBER, literal, line, current, literal);
             }
             else if (isalpha(c))
             {
                 literal = read_other(code, length, &current);
                 if (strcmp(literal, AND_KEY) == 0)
                 {
-                    tokn = token_simple(TOKEN_AND, line, current, (char *)AND_KEY);
+                    token = token_simple(TOKEN_AND, line, current, (char *)AND_KEY);
                 }
                 else if (strcmp(literal, ELSE_KEY) == 0)
                 {
-                    tokn = token_simple(TOKEN_ELSE, line, current, (char *)ELSE_KEY);
+                    token = token_simple(TOKEN_ELSE, line, current, (char *)ELSE_KEY);
                 }
                 else if (strcmp(literal, FALSE_KEY) == 0)
                 {
-                    tokn = token_simple(TOKEN_FALSE, line, current, (char *)FALSE_KEY);
+                    token = token_simple(TOKEN_FALSE, line, current, (char *)FALSE_KEY);
                 }
                 else if (strcmp(literal, FUN_KEY) == 0)
                 {
-                    tokn = token_simple(TOKEN_METHOD, line, current, (char *)FUN_KEY);
+                    token = token_simple(TOKEN_METHOD, line, current, (char *)FUN_KEY);
                 }
                 else if (strcmp(literal, FOR_KEY) == 0)
                 {
-                    tokn = token_simple(TOKEN_FOR, line, current, (char *)FOR_KEY);
+                    token = token_simple(TOKEN_FOR, line, current, (char *)FOR_KEY);
                 }
                 else if (strcmp(literal, IF_KEY) == 0)
                 {
-                    tokn = token_simple(TOKEN_IF, line, current, (char *)IF_KEY);
+                    token = token_simple(TOKEN_IF, line, current, (char *)IF_KEY);
                 }
                 else if (strcmp(literal, NIL_KEY) == 0)
                 {
-                    tokn = token_simple(TOKEN_NIL, line, current, (char *)NIL_KEY);
+                    token = token_simple(TOKEN_NIL, line, current, (char *)NIL_KEY);
                 }
                 else if (strcmp(literal, OR_KEY) == 0)
                 {
-                    tokn = token_simple(TOKEN_OR, line, current, (char *)OR_KEY);
+                    token = token_simple(TOKEN_OR, line, current, (char *)OR_KEY);
                 }
                 else if (strcmp(literal, PRINT_KEY) == 0)
                 {
-                    tokn = token_simple(TOKEN_DISPLAY, line, current, (char *)PRINT_KEY);
+                    token = token_simple(TOKEN_DISPLAY, line, current, (char *)PRINT_KEY);
                 }
                 else if (strcmp(literal, RETURN_KEY) == 0)
                 {
-                    tokn = token_simple(TOKEN_GIVE, line, current, (char *)RETURN_KEY);
+                    token = token_simple(TOKEN_GIVE, line, current, (char *)RETURN_KEY);
                 }
                 else if (strcmp(literal, TRUE_KEY) == 0)
                 {
-                    tokn = token_simple(TOKEN_TRUE, line, current, (char *)TRUE_KEY);
+                    token = token_simple(TOKEN_TRUE, line, current, (char *)TRUE_KEY);
                 }
                 else if (strcmp(literal, VAR_KEY) == 0)
                 {
-                    tokn = token_simple(TOKEN_VAR, line, current, (char *)VAR_KEY);
+                    token = token_simple(TOKEN_VAR, line, current, (char *)VAR_KEY);
                 }
                 else if (strcmp(literal, WHILE_KEY) == 0)
                 {
-                    tokn = token_simple(TOKEN_WHILE, line, current, (char *)WHILE_KEY);
+                    token = token_simple(TOKEN_WHILE, line, current, (char *)WHILE_KEY);
                 }
                 else
                 {
-                    tokn = token_simple(TOKEN_IDENTIFIER, line, current, literal);
+                    token = token_simple(TOKEN_IDENTIFIER, line, current, literal);
                 }
             }
             else
@@ -300,7 +300,7 @@ Tokenization toknzr(const char *code, int verbose)
                 }
                 else
                 {
-                    tokn = token_simple(TOKEN_ERROR, line, current, "Unexpected character.");
+                    token = token_simple(TOKEN_ERROR, line, current, "Unexpected character.");
                 }
             }
             break;
@@ -308,10 +308,10 @@ Tokenization toknzr(const char *code, int verbose)
         fr(literal);
         literal = NULL;
         current++;
-        if (tokn != NULL)
+        if (token != NULL)
         {
-            list_push(toknz.values, tokn);
-            tokn = NULL;
+            list_push(toknz.values, token);
+            token = NULL;
         }
     }
     toknz.lines = line;
@@ -321,8 +321,8 @@ Tokenization toknzr(const char *code, int verbose)
 
 static void tokens_foreach_token(List *tokens, void *tokenObj)
 {
-    Token *tokn = (Token *)tokenObj;
-    token_destroy(tokn);
+    Token *token = (Token *)tokenObj;
+    token_destroy(token);
 }
 
 void toknzr_destroy(Tokenization toknz)
