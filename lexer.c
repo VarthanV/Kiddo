@@ -1,13 +1,13 @@
-#include "includes/lexer.h"
-#include "includes/list.h"
-#include "includes/common.h"
-#include "includes/memory.h"
+#include "lexer.h"
+#include "list.h"
+#include "common.h"
+#include "memory.h"
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #define LINEBUFSIZE 1048
-static Token *token(TokenType type, char *literal, int line, int column, char *lexeme)
+static Token * giveToken(TokenType type, char *literal, int line, int column, char *lexeme)
 {
     size_t length = 0;
     Token *token = (Token *)alloc(sizeof(Token));
@@ -154,6 +154,9 @@ Tokenization toknzr(const char *code, int verbose)
         case ';':
             token = token_simple(TOKEN_SEMICOLON, line, current, (char *)";");
             break;
+        case '[':
+            token =match_next(TOKEN_LIST,line,current,(char *) "]") ;
+            break;   
         case '*':
             token = token_simple(TOKEN_STAR, line, current, (char *)"*");
             break;
@@ -161,6 +164,7 @@ Tokenization toknzr(const char *code, int verbose)
             type = match_next(code, '=', length, &current) ? TOKEN_BANG_EQUAL : TOKEN_BANG;
             token = token_simple(type, line, current, (char *)"!");
             break;
+
         case '=':
             type = match_next(code, '=', length, &current) ? TOKEN_EQUAL_EQUAL : TOKEN_EQUAL;
             token = token_simple(type, line, current, (char *)"=");
@@ -215,7 +219,7 @@ Tokenization toknzr(const char *code, int verbose)
                 literal[current - start - 1] = 0;
                 if (literal != NULL)
                 {
-                    token = token(TOKEN_STRING, literal, line, current, literal);
+                    token = giveToken(TOKEN_STRING, literal, line, current, literal);
                 }
             }
             break;
@@ -230,7 +234,7 @@ Tokenization toknzr(const char *code, int verbose)
             if (isdigit(c))
             {
                 literal = read_number(code, length, &current);
-                token = token(TOKEN_NUMBER, literal, line, current, literal);
+                token=giveToken(TOKEN_NUMBER, literal, line, current, literal);
             }
             else if (isalpha(c))
             {
