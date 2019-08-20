@@ -842,3 +842,94 @@ static void statementDestroy(Statement *stmt)
         free((void *)stmt);
     }
 }
+static Statement *return_statement(Node **node)
+{
+    Token *keyword = (Token *)(*node)->prev->data, *tkn = (Token *)(*node)->data;
+    Expression *value = NULL;
+    GiveStatement *returnStmt = NULL;
+    if (!MATCH(tkn->type, TOKEN_SEMICOLON))
+    {
+        value = expression(node);
+    }
+    consume(node, TOKEN_SEMICOLON, "Expect ';' after return");
+    returnStmt = (GiveStatement *)malloc(sizeof(GiveStatement));
+    returnStmt->keyword = *keyword;
+    returnStmt->value = value;
+    return new_statement(STMT_GIVE, returnStmt);
+}
+static void stmts_destroy(List *stmts)
+{
+    if (stmts->count != 0)
+    {
+        list_foreach(stmts, stmts_foreach_stmt);
+    }
+    list_destroy(stmts);
+}
+void parser_destroy(ParsingContext *ctx)
+{
+    if (ctx->stmts != NULL)
+    {
+        stmts_destroy(ctx->stmts);
+        ctx->stmts = NULL;
+    }
+
+    if (ctx->expr != NULL)
+    {
+        expr_destroy(ctx->expr);
+        ctx->expr = NULL;
+    }
+}
+
+ParsingContext parse(Tokenization toknz)
+{
+    ParsingContext ctx = {NULL, NULL};
+    List *stmts = NULL;
+    List *tokens = toknz.values;
+    int nbTokens = 0;
+    Node *head = NULL;
+    Statement *stmt = NULL;
+
+    if (tokens != NULL)
+    {
+        stmts = list();
+        nbTokens = tokens->count;
+        head = tokens->head;
+
+        while (!END_OF_TOKENS(((Token *)head->data)->type))
+        {
+            stmt = declaration(&head);
+            if (stmt != NULL)
+            {
+                list_push(stmts, stmt);
+            }
+            else
+            {
+                stmts_destroy(stmts);
+                stmts = NULL;
+                break;
+            }
+        }
+    }
+    ctx.stmts = stmts;
+    return ctx;
+}
+
+void parse_error(Token *token, const char *msg, ...)
+{
+    char buff[LINEBUFSIZE];
+    va_list list;
+    va_start(list, msg);
+
+    memset(buff, 0, sizeof(buff));
+
+    if (token->type == TOKEN_ENDOFFILE)
+    {
+        fprintf(stderr, ERROR_AT_EOF, msg);
+    }
+    else
+    {
+        sprintf(buff, ERROR_AT_LINE, token->line, msg, token->lexeme);
+        vfprintf(stderr, msg, list);
+    }
+    va_end(list);
+}
