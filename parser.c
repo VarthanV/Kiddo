@@ -5,8 +5,9 @@
 #include "list.h"
 #include "memory.h"
 #include "lexer.h"
+#define LINEBUFSIZE 1048
 #include "parser.h"
-
+// !Definitions
 static Expression *expression(Node **node);
 static Expression *assignment(Node **node);
 static Expression *equality(Node **node);
@@ -24,8 +25,9 @@ static Statement *giveStatements(Node **node);
 static Statement *if_statement(Node **node);
 static Statement *for_statement(Node **node);
 static Statement *while_statement(Node **node);
-void expressionDestroy(Expression *expr);
+void expr_destroy(Expression *expr);
 void statementDestroy(Statement *stmt);
+// ! Methods
 static int match(TokenType type, TokenType types[], int n, Node **node)
 {
     for (int i = 0; i < n; i++)
@@ -542,16 +544,301 @@ static Statement *declaration(Node **node)
 
     return stmt;
 }
-static Statement* block_statements(Node** node)
+static Statement *block_statements(Node **node)
 {
-    Token* token = NULL;
-    BlockStatements* stmt = (BlockStatements*)alloc(sizeof(BlockStatements));
+    Token *token = NULL;
+    BlockStatements *stmt = (BlockStatements *)alloc(sizeof(BlockStatements));
     stmt->innerStatements = list();
-    token = (Token*)(*node)->data;
-    while (token->type != TOKEN_RIGHT_BRACE && token->type != TOKEN_ENDOFFILE) {
+    token = (Token *)(*node)->data;
+    while (token->type != TOKEN_RIGHT_BRACE && token->type != TOKEN_ENDOFFILE)
+    {
         list_push(stmt->innerStatements, declaration(node));
-        token = (Token*)(*node)->data;
+        token = (Token *)(*node)->data;
     }
     consume(node, TOKEN_RIGHT_BRACE, "Expect '}' after block.");
-    return new_statement(STMT_BLOCK, (void*)stmt);
+    return new_statement(STMT_BLOCK, (void *)stmt);
+}
+static Statement *if_statement(Node **node)
+{
+    Statement *thenStmt = NULL, *elseStmt = NULL;
+    IfElseStatement *realStmt = NULL;
+    Token *tkn = (Token *)(*node)->data;
+    Expression *condition = NULL;
+    consume(node, TOKEN_LEFT_PAREN, "Expect '(' after 'if'.");
+    condition = expression(node);
+    consume(node, TOKEN_RIGHT_PAREN, "Expect ')' after condition.");
+    thenStmt = statement(node);
+    tkn = (Token *)(*node)->data;
+    if (MATCH(tkn->type, TOKEN_ELSE))
+    {
+        (*node) = (*node)->next;
+        elseStmt = statement(node);
+    }
+    realStmt = (IfElseStatement *)alloc(sizeof(IfElseStatement));
+    realStmt->condition = condition;
+    realStmt->elseStmt = elseStmt;
+    realStmt->thenStmt = thenStmt;
+    return new_statement(STMT_IF_ELSE, realStmt);
+}
+
+static Statement *for_statement(Node **node)
+{
+    Statement *initializer = NULL, *body = NULL;
+    Expression *condition = NULL, *step = NULL;
+    BlockStatements *wrappedBody = NULL, *wrappedForAndInit = NULL;
+    WhileStatement *wrappedFor = NULL;
+    ExpressionStatement *wrappedStep = NULL;
+    Token *tkn = NULL;
+    consume(node, TOKEN_LEFT_PAREN, "Expect '(' after for");
+    tkn = (Token *)(*node)->data;
+    if (MATCH(tkn->type, TOKEN_SEMICOLON))
+    {
+        (*node) = (*node)->next;
+    }
+    else
+    {
+        if (MATCH(tkn->type, TOKEN_VAR))
+        {
+            (*node) = (*node)->next;
+            initializer = var_declaration(node);
+        }
+        else
+        {
+            (*node) = (*node)->next;
+            initializer = expression_statement(node);
+        }
+    }
+    tkn = (Token *)(*node)->data;
+    if (!MATCH(tkn->type, TOKEN_SEMICOLON))
+    {
+        condition = expression(node);
+    }
+    consume(node, TOKEN_SEMICOLON, "Expect ';' after for condition");
+    if (!MATCH(tkn->type, TOKEN_RIGHT_PAREN))
+    {
+        step = expression(node);
+    }
+    consume(node, TOKEN_RIGHT_PAREN, "Expect ')' for 'for' closing");
+    body = statement(node);
+    if (step != NULL)
+    {
+        wrappedBody = malloc(sizeof(BlockStatements));
+        wrappedBody->innerStatements = list();
+        wrappedStep = alloc(sizeof(ExpressionStatement));
+        wrappedStep->expr = step;
+        list_push(wrappedBody->innerStatements, body);
+        list_push(wrappedBody->innerStatements, new_statement(STMT_EXPR, wrappedStep));
+        body = new_statement(STMT_BLOCK, wrappedBody);
+    }
+
+    if (condition == NULL)
+    {
+        condition = new_expr(EXPR_LITERAL, new_true());
+    }
+    wrappedFor = alloc(sizeof(WhileStatement));
+    wrappedFor->condition = condition;
+    wrappedFor->body = body;
+    body = new_statement(STMT_WHILE, wrappedFor);
+    if (initializer != NULL)
+    {
+        wrappedForAndInit = alloc(sizeof(BlockStatements));
+        wrappedForAndInit->innerStatements = list();
+        list_push(wrappedForAndInit->innerStatements, initializer);
+        list_push(wrappedForAndInit->innerStatements, body);
+        body = new_statement(STMT_BLOCK, wrappedForAndInit);
+    }
+    return body;
+}
+
+static Statement *while_statement(Node **node)
+{
+    WhileStatement *realStmt = NULL;
+    Expression *condition = NULL;
+    Statement *bodyStmt = NULL;
+    consume(node, TOKEN_LEFT_PAREN, "Expect '(' after 'while'.");
+    condition = expression(node);
+    consume(node, TOKEN_RIGHT_PAREN, "Expect ')' after condition.");
+    bodyStmt = statement(node);
+    realStmt = (WhileStatement *)alloc(sizeof(WhileStatement));
+    realStmt->condition = condition;
+    realStmt->body = bodyStmt;
+    return new_statement(STMT_WHILE, realStmt);
+}
+
+static Statement *fun_statement(const char *kind, Node **node)
+{
+    Token *name = NULL, *tkn = NULL;
+    Node **temp = NULL;
+    List *params = NULL;
+    Statement *body = NULL;
+    FunStatement *fnStmt = NULL;
+    char buf[LINEBUFSIZE];
+    memset(buf, 0, LINEBUFSIZE);
+    sprintf(buf, "Expect %s name.", kind);
+    temp = consume(node, TOKEN_IDENTIFIER, buf);
+    if (temp != NULL)
+    {
+
+        name = (Token *)(*temp)->data;
+        memset(buf, 0, LINEBUFSIZE);
+        sprintf(buf, "Expect '(' after %s name.", kind);
+        consume(node, TOKEN_LEFT_PAREN, buf);
+        params = list();
+        tkn = (Token *)(*node)->data;
+        if (!MATCH(tkn->type, TOKEN_RIGHT_PAREN))
+        {
+            do
+            {
+                if (params->count > MAX_ARGS)
+                {
+                    parse_error(tkn, "Cannot have more than 8 parameters.");
+                }
+                temp = consume(node, TOKEN_IDENTIFIER, "Expect parameter name.");
+                tkn = (Token *)(*temp)->data;
+                list_push(params, tkn);
+                tkn = (Token *)(*node)->data;
+                if (!MATCH(tkn->type, TOKEN_RIGHT_PAREN))
+                {
+                    (*node) = (*node)->next;
+                }
+            } while (MATCH(tkn->type, TOKEN_COMMA));
+        }
+        consume(node, TOKEN_RIGHT_PAREN, "Expect ')' after parameters.");
+        memset(buf, 0, LINEBUFSIZE);
+        sprintf(buf, "Expect '{' before %s body.", kind);
+        consume(node, TOKEN_LEFT_BRACE, buf);
+        body = block_statements(node);
+        fnStmt = alloc(sizeof(FunStatement));
+        fnStmt->name = *name;
+        fnStmt->body = body;
+        fnStmt->args = params;
+        return new_statement(STMT_METHOD, fnStmt);
+    }
+    return NULL;
+}
+static void literal_destroy(LiteralExpression *expr)
+{
+    switch (expr->type)
+    {
+    case BOOL:
+    case LITERAL_NUMBER:
+        free(expr->value);
+        break;
+    case LITERAL_NOTHING:
+        break;
+    case LITERAL_STRING:
+        break;
+    }
+    free(expr);
+}
+
+static void expr_destroy(Expression *expr)
+{
+    Expression *expr = NULL;
+    SetExpression *set = NULL;
+    GetExpression *get = NULL;
+    LiteralExpression *literal = NULL;
+    switch (expr->type)
+    {
+    case EXPR_LITERAL:
+        literal = (LiteralExpression *)expr->expr;
+        literal_destroy(literal);
+        break;
+    case EXPR_UNARY:
+        expr = ((UnaryExpression *)expr->expr)->expr;
+        exprDestroy(expr);
+        break;
+    case EXPR_BINARY:
+        expr = ((BinaryExpression *)expr->expr)->leftExpr;
+        expr_destroy(expr);
+        expr = ((BinaryExpression *)expr->expr)->rightExpr;
+        expr_destroy(expr);
+        break;
+    case EXPR_GROUPING:
+        expr = ((GroupingExpression *)expr->expr)->expr;
+        expr_destroy(expr);
+        break;
+    case EXPR_ASSIGNMENT:
+        expr = ((AssignmentExpr *)expr->expr)->rightExpr;
+        expr_destroy(expr);
+        break;
+    case EXPR_LOGICAL:
+        expr = ((LogicalExpr *)expr->expr)->left;
+        expr_destroy(expr);
+        expr = ((LogicalExpr *)expr->expr)->right;
+        expr_destroy(expr);
+        break;
+    case EXPR_CALL:
+        expr = ((CallExpression *)expr->expr)->callee;
+        expr_destroy(expr);
+        list_destroy(((CallExpression *)expr->expr)->args);
+        break;
+        break;
+        break;
+    case EXPR_SET:
+        set = (SetExpression *)expr->expr;
+        expr_destroy(set->object);
+        expr_destroy(set->value);
+        break;
+    case EXPR_GET:
+        get = (GetExpression *)expr->expr;
+        expr_destroy(get->object);
+        break;
+    case EXPR_VARIABLE:
+    default:
+        break;
+    }
+    free(expr);
+}
+static void stmts_foreach_stmt(List *stmts, void *stmtObj)
+{
+    Statement *stmt = (Statement *)stmtObj;
+    statementDestroy(stmt);
+}
+static void statementDestroy(Statement *stmt)
+{
+    IfElseStatement *ifStmt = NULL;
+    WhileStatement *whileStmt = NULL;
+    FunStatement *funStmt = NULL;
+    if (stmt != NULL)
+    {
+        switch (stmt->type)
+        {
+        case STMT_BLOCK:
+            list_foreach(((BlockStatements *)stmt->statement)->innerStatements, stmts_foreach_stmt);
+            break;
+        case STMT_PRINT:
+            expr_destroy(((DisplayStatement *)stmt->statement)->expr);
+            break;
+        case STMT_EXPR:
+            expr_destroy(((ExpressionStatement *)stmt->statement)->expr);
+            break;
+        case STMT_VAR_DECLARATION:
+            expressionDestroy(((VarDeclarationStmt *)stmt->statement)->initializer);
+            break;
+        case STMT_IF_ELSE:
+            ifStmt = (IfElseStatement *)stmt->statement;
+            statementDestroy(ifStmt->thenStmt);
+            statementDestroy(ifStmt->elseStmt);
+            expr_destroy(ifStmt->condition);
+            break;
+        case STMT_WHILE:
+            whileStmt = (WhileStatement *)stmt->statement;
+            statementDestroy(whileStmt->body);
+            expr_destroy(whileStmt->condition);
+            break;
+        case STMT_METHOD:
+            funStmt = (MethodStatement *)stmt->statement;
+            list_destroy(funStmt->args);
+            statementDestroy(funStmt->body);
+            break;
+        case STMT_GIVE:
+            expr_destroy(((GiveStatement *)stmt->statement)->value);
+            break;
+
+        default:
+            break;
+        }
+        free((void *)stmt);
+    }
 }

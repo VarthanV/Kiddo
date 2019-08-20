@@ -45,10 +45,11 @@ typedef struct
 
 } Variable;
 
-typedef struct expression_call_t {
-    Expression* callee;
+typedef struct expression_call_t
+{
+    Expression *callee;
     Token paren;
-    List* args;
+    List *args;
 } CallExpression;
 
 typedef struct
@@ -75,12 +76,24 @@ typedef enum
     STMT_REPEAT,
     STMT_GIVE,
     STMT_VAR_DECLARATION,
-    
-
+    STMT_IF_ELSE,
+    STMT_WHILE
 } StatementType;
-typedef struct expression_variable_t {
+
+typedef struct stmt_while_t {
+    Expression* condition;
+    Statement* body;
+} WhileStatement;
+typedef struct expression_variable_t
+{
     Token variableName;
 } VariableExpr;
+typedef struct stmt_fun_t {
+    List* args;
+    Token name;
+    Statement* body;
+} FunStatement;
+
 typedef struct
 {
     StatementType type;
@@ -115,15 +128,17 @@ typedef struct
     Statement *thenStmt;
     Statement *elseStmt;
 } IfElseStatement;
-typedef struct expression_set_t {
-    Expression* object;
+typedef struct expression_set_t
+{
+    Expression *object;
     Token name;
-    Expression* value;
+    Expression *value;
 } SetExpression;
 
-typedef struct expression_unary_t {
+typedef struct expression_unary_t
+{
     Token op;
-    Expression* expr;
+    Expression *expr;
 } UnaryExpression;
 
 typedef struct
@@ -140,11 +155,11 @@ typedef struct
 
 } MethodStatement;
 
-typedef struct expression_assignmnt_t {
+typedef struct expression_assignmnt_t
+{
     Token variableName;
-    Expression* rightExpr;
+    Expression *rightExpr;
 } AssignmentExpr;
-
 
 typedef struct
 {
@@ -157,8 +172,9 @@ typedef struct
     List *stmts;
     Expression *expr;
 } ParsingContext;
-typedef struct expression_get_t {
-    Expression* object;
+typedef struct expression_get_t
+{
+    Expression *object;
     Token name;
 } GetExpression;
 typedef struct expression_grouping_t
