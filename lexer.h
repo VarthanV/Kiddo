@@ -16,7 +16,6 @@ typedef enum tokentype
     TOKEN_SLASH,
     TOKEN_STAR,
 
-
     TOKEN_BANG,
     TOKEN_BANG_EQUAL,
     TOKEN_EQUAL,
