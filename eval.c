@@ -425,17 +425,244 @@ void *visit_print(Statement *stmt)
 {
 	PrintStatement *printStmt = (PrintStatement *)(stmt->statement);
 	Callable *call = NULL;
-	Object* obj = eval_expr(printStmt->expr);
-    double* value = NULL;
-    char* bValue = NULL;
-	switch (obj ->type)
+	Object *obj = eval_expr(printStmt->expr);
+	double *value = NULL;
+	char *bValue = NULL;
+	switch (obj->type)
 	{
-	case OBJECT_NIL :
+	case OBJECT_NIL:
 		printf("NOTHING\n");
 		break;
-			
-	
+	case OBJECT_STRING:
+	case OBJECT_ERROR:
+		printf("%s\n", (char *)obj->value);
+		break;
+	case OBJECT_BOOL:
+		bValue = (char *)obj->value;
+		printf("%s\n", *bValue == 1 ? TRUE_KEY : FALSE_KEY);
+		break;
+	case OBJECT_NUMBER:
+		value = (double *)obj->value;
+		if (*value != floor(*value))
+		{
+			printf("%lf\n", *value);
+		}
+		else
+		{
+			printf("%0.0lf\n", floor(*value));
+		}
+		break;
+	case OBJECT_CALLABLE:
+		call = (Callable *)obj->value;
+		printf("<METHOD %s>\n", ((MethodStatement *)call->declaration)->name.lexeme);
+		break;
+
+	case OBJECT_VOID:
+		break;
 	default:
 		break;
+	}
+	return obj;
+}
+void *visit_expr(Statement *stmt)
+{
+	ExpressionStatement *exprStmt = (ExpressionStatement *)(stmt->statement);
+	return eval_expr(exprStmt->expr);
+}
+
+void *visit_var(Statement *stmt)
+{
+	VarDeclarationStmt *varDeclStmt = (VarDeclarationStmt *)(stmt->statement);
+	Object *value = NULL;
+	Token key = varDeclStmt->varName;
+	if (varDeclStmt->initializer != NULL)
+	{
+		value = eval_expr(varDeclStmt->initializer);
+	}
+	if (!env_add_variable(CurrentEnv, key.lexeme, value))
+	{
+		runtime_error("'%s' is already declared", &value, key.line, key.lexeme);
+	}
+
+	return value;
+}
+static void obj_destroy_in_list(List *objs, void *obj)
+{
+	Object *o = (Object *)obj;
+	obj_destroy(o);
+}
+
+static Object *execute_block(BlockStatements *stmt)
+{
+	Statement *innerStmt = NULL;
+	Node *node = NULL;
+	List *dump = NULL;
+	Object *obj = NULL;
+	int propagateReturn = 0;
+
+	for (node = stmt->innerStatements->head; node != NULL; node = node->next)
+	{
+		innerStmt = (Statement *)node->data;
+		if (innerStmt->type == STMT_GIVE)
+		{
+			obj = accept(EvaluateStmtVisitor, innerStmt);
+		}
+		else
+		{
+			if (dump == NULL)
+			{
+				dump = list();
+			}
+			obj = accept(EvaluateStmtVisitor, innerStmt);
+			if (obj->propagateReturn)
+			{
+				break;
+			}
+			else
+			{
+				list_push(dump, obj);
+			}
+		}
+	}
+	propagateReturn = obj->propagateReturn;
+	if (!obj->propagateReturn)
+	{
+		list_foreach(dump, obj_destroy_in_list);
+	}
+	list_destroy(dump);
+	return propagateReturn ? obj : new_void();
+}
+
+void *visit_block(Statement *stmt)
+{
+	BlockStatements *blockStmt = (BlockStatements *)(stmt->statement);
+	Object *returnValue = NULL;
+	ExecutionEnvironment *prevEnv = CurrentEnv, *env = env_new();
+	env->variables = NULL;
+	env->enclosing = prevEnv;
+	CurrentEnv = env;
+	returnValue = execute_block(blockStmt);
+	env_destroy(env);
+	fr(env);
+	CurrentEnv = prevEnv;
+	return returnValue;
+}
+
+void *visit_ifElse(Statement *stmt)
+{
+	IfElseStatement *ifElseStmt = (IfElseStatement *)(stmt->statement);
+	Object *eval_exprCond = eval_expr(ifElseStmt->condition);
+	if (obj_likely(eval_exprCond))
+	{
+		return accept(EvaluateStmtVisitor, ifElseStmt->thenStmt);
+	}
+	else if (ifElseStmt->elseStmt != NULL)
+	{
+		return accept(EvaluateStmtVisitor, ifElseStmt->elseStmt);
+	}
+	return new_void();
+}
+
+void *visit_while(Statement *stmt)
+{
+	WhileStatement *whileStmt = (WhileStatement *)(stmt->statement);
+	while (obj_likely(eval_expr(whileStmt->condition)))
+	{
+		accept(EvaluateStmtVisitor, whileStmt->body);
+	}
+
+	return new_void();
+}
+
+static Object *fun_call(List *args, void *declaration, ExecutionEnvironment *closure, FunctionType type)
+{
+	MethodStatement *funDecl = (MethodStatement *)declaration;
+	Token *tkn = NULL;
+	Node *node = NULL, *valueWrapper = NULL;
+	int i = 0;
+	Object *value = NULL;
+	ExecutionEnvironment *prevEnv = CurrentEnv, *env = env_new();
+	env->enclosing = closure;
+	CurrentEnv = env;
+
+	for (node = funDecl->args->head; node != NULL; node = node->next)
+	{
+		tkn = (Token *)node->data;
+		valueWrapper = list_at(args, i);
+		if (valueWrapper != NULL)
+		{
+			value = (Object *)valueWrapper->data;
+			env_add_variable(CurrentEnv, tkn->lexeme, value);
+		}
+		i++;
+	}
+
+	value = execute_block((BlockStatements *)funDecl->body->statement);
+	if (value->type == OBJECT_VOID)
+	{
+		if (type == FUNCTION_TYPE_CTOR)
+		{
+			obj_destroy(value);
+			value = env_get_variable_value(CurrentEnv, "this");
+		}
+	}
+
+	if (type == FUNCTION_TYPE_CTOR)
+	{
+		obj_destroy(value);
+		value = env_get_variable_value(CurrentEnv, "this");
+	}
+	CurrentEnv = prevEnv;
+	return value;
+}
+
+static Object *build_function(MethodStatement *funStmt, ExecutionEnvironment *closure, FunctionType type)
+{
+	Callable *call = (Callable *)alloc(sizeof(Callable));
+	memset(call, 0, sizeof(Callable));
+	call->call = fun_call;
+	call->arity = funStmt->args->count;
+	call->declaration = (void *)funStmt;
+	call->closure = closure;
+	call->type = type;
+	return obj_new(OBJECT_CALLABLE, call, sizeof(Callable));
+}
+
+void *visit_fun(Statement *stmt)
+{
+	MethodStatement *funStmt = (MethodStatement *)(stmt->statement);
+	Object *obj = NULL;
+	obj = build_function(funStmt, CurrentEnv, FUNCTION_TYPE_FUNCTION);
+	env_add_variable(CurrentEnv, funStmt->name.lexeme, obj);
+	return new_void();
+}
+
+void *visit_return(Statement *stmt)
+{
+	Object *value = new_void();
+	GiveStatement *returnStmt = (GiveStatement *)(stmt->statement);
+
+	if (returnStmt->value != NULL)
+	{
+		obj_destroy(value);
+		value = eval_expr(returnStmt->value);
+	}
+	value->propagateReturn = 1;
+	return value;
+}
+
+int obj_force_destroy(KeyValuePair *pair)
+{
+	Object *obj = (Object *)pair->value;
+	obj->shallow = 1;
+	obj_destroy(obj);
+	return 1;
+}
+static void callable_destroy(Callable *callable)
+{
+	if (callable->closure != NULL && GlobalExecutionEnvironment.variables != callable->closure->variables)
+	{
+		env_destroy(callable->closure);
+		free(callable->closure);
 	}
 }
