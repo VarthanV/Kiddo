@@ -400,7 +400,7 @@ static void synchronize(Node **node)
 
             switch (token->type)
             {
-            case TOKEN_CLASS:
+
             case TOKEN_METHOD:
             case TOKEN_VAR:
             case TOKEN_FOR:
@@ -518,12 +518,8 @@ static Statement *declaration(Node **node)
 {
     const Token *tkn = (Token *)((*node)->data);
     Statement *stmt = NULL;
-    if (MATCH(tkn->type, TOKEN_CLASS))
-    {
-        (*node) = (*node)->next;
-        return class_statement(node);
-    }
-    else if (MATCH(tkn->type, TOKEN_DISPLAY))
+
+    if (MATCH(tkn->type, TOKEN_DISPLAY))
     {
         (*node) = (*node)->next;
         return fun_statement("function", node);
