@@ -79,6 +79,10 @@ typedef enum
     STMT_IF_ELSE,
     STMT_WHILE
 } StatementType;
+typedef struct stmt_print_t {
+    Expression* expr;
+} PrintStatement;
+
 
 typedef struct stmt_while_t {
     Expression* condition;
