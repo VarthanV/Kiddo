@@ -666,3 +666,83 @@ static void callable_destroy(Callable *callable)
 		free(callable->closure);
 	}
 }
+void obj_destroy(Object *obj)
+{
+	Callable *callable = NULL;
+	Class *class = NULL;
+	ClassInstance *instance = NULL;
+
+	if (obj != NULL && obj->shallow == 1)
+	{
+		switch (obj->type)
+		{
+		case OBJECT_VOID:
+		case OBJECT_NIL:
+		case OBJECT_BOOL:
+		case OBJECT_NUMBER:
+		case OBJECT_STRING:
+			break;
+		case OBJECT_ERROR:
+			free(obj->value);
+			break;
+		case OBJECT_CALLABLE:
+			callable = (Callable *)obj->value;
+			callable_destroy(callable);
+			free(obj->value);
+			break;
+		default:
+			runtime_error("Unknown Object to destroy", &obj, 0);
+			break;
+		}
+		fr(obj);
+	}
+}
+Object *obj_new(ObjectType type, void *value, size_t valueSize)
+{
+	Object *obj = (Object *)alloc(sizeof(Object));
+	obj->type = type;
+	obj->value = value;
+	obj->valueSize = valueSize;
+	obj->shallow = 1;
+	obj->propagateReturn = 0;
+	return obj;
+}
+
+char obj_likely(Object *obj)
+{
+	char *value = NULL;
+	if (obj->type == OBJECT_NIL)
+	{
+		return (char)0;
+	}
+
+	if (obj->type == OBJECT_BOOL)
+	{
+		value = (char *)obj->value;
+		return *value == (char)1;
+	}
+
+	return (char)1;
+}
+
+char obj_unlikely(Object *obj)
+{
+	char *value = NULL;
+	if (obj->type == OBJECT_NIL)
+	{
+		return (char)0;
+	}
+
+	if (obj->type == OBJECT_BOOL)
+	{
+		value = (char *)obj->value;
+		return *value != (char)1;
+	}
+
+	return (char)0;
+}
+
+void eval(Statement *stmt)
+{
+	accept(EvaluateStmtVisitor, stmt);
+}
