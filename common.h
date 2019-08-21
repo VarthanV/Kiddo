@@ -16,7 +16,7 @@
 #undef DEBUG_TRACE_EXECUTION
 
 #define DEBUG_STRESS_GC
-
+#define LINEBUFSIZE 1024 * sizeof(char)
 #define UINT8_COUNT (UINT8_MAX + 1)
 
 #endif

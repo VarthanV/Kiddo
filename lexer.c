@@ -6,7 +6,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#define LINEBUFSIZE 1048
 static Token * giveToken(TokenType type, char *literal, int line, int column, char *lexeme)
 {
     size_t length = 0;

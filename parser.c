@@ -5,8 +5,9 @@
 #include "list.h"
 #include "memory.h"
 #include "lexer.h"
-#define LINEBUFSIZE 1048
 #include "parser.h"
+#include "common.h"
+#define LINEBUFSIZE 1024* sizeof(char)
 // !Definitions
 static Expression *expression(Node **node);
 static Expression *assignment(Node **node);

@@ -10,7 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#define LINEBUFFSIZE 1048
+#define LINEBUFFSIZE 1024 * sizeof(char)
 void *visitBinary(Expression *expr);
 void *visitUnary(Expression *expr);
 void *visitGrouping(Expression *expr);
