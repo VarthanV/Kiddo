@@ -1,0 +1,6 @@
+
+#define LOX_CONFIG_H
+
+#cmake define VERSION "@VERSION@"
+#cmake define DEBUG "@DEBUG@"
+
