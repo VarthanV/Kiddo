@@ -642,3 +642,383 @@ static void binary(int assign)
         return;
     }
 }
+static void And(int assign)
+{
+    int end = emit_jump(OP_JUMP_IF_FALSE);
+    emit_byte(OP_POP);
+    prec_parse(PREC_AND);
+    patch_jump(end);
+}
+static void Or(int assign)
+{
+    int elseJump = emit_jump(OP_JUMP_IF_FALSE);
+    int endJump = emit_jump(OP_JUMP);
+    patch_jump(elseJump);
+    emit_byte(OP_POP);
+    prec_parse(PREC_OR);
+    patch_jump(endJump);
+}
+static void print_statement()
+{
+    expression();
+    consume(TOKEN_SEMICOLON, "EXPECTED ; AT  THE END");
+    emit_byte(OP_PRINT);
+}
+static void expression_statement()
+{
+    expression();
+    emit_byte(OP_POP);
+    consume(TOKEN_SEMICOLON, "EXPECTED ; AT THE END");
+}
+static void while_statement()
+{
+    int loopStart = current_chunk()->count;
+    int exitJump = 0;
+
+    consume(TOKEN_LEFT_PAREN, "EXPECTED '(' AFTER 'WHILE'.");
+    expression();
+    consume(TOKEN_RIGHT_PAREN, "EXPECTED ')' AFTER CONDITION.");
+
+    exitJump = emit_jump(OP_JUMP_IF_FALSE);
+
+    emit_byte(OP_POP);
+    statement();
+
+    emit_loop(loopStart);
+
+    patch_jump(exitJump);
+    emit_byte(OP_POP);
+}
+static void scope_begin()
+{
+    currentCompiler->scopeDepth++;
+}
+static void scope_end()
+{
+    currentCompiler->scopeDepth--;
+
+    while (currentCompiler->localCount > 0 && currentCompiler->locals[currentCompiler->localCount - 1].depth > currentCompiler->scopeDepth)
+    {
+        emit_byte(OP_POP);
+        currentCompiler->localCount--;
+    }
+}
+static void block_statement()
+{
+    while (!check(TOKEN_RIGHT_BRACE) & !check(TOKEN_ENDOFFILE))
+    {
+        declaration();
+    }
+    consume(TOKEN_RIGHT_BRACE, "EXPECTED } AFTER THE BLOCK");
+}
+static void if_statement()
+{
+    int thenJump = 0, elseJump = 0;
+    consume(TOKEN_LEFT_PAREN, "EXPECTED ( AFTER IF");
+    expression();
+    consume(TOKEN_RIGHT_PAREN, "EXPECTED ) AFTER EXPRESSION");
+    thenJump = emit_jump(OP_JUMP_IF_FALSE);
+    emit_byte(OP_POP);
+    statement();
+    elseJump = emit_jump(OP_JUMP);
+    patch_jump(thenJump);
+    emit_byte(OP_POP);
+    if (match(TOKEN_ELSE))
+    {
+        statement();
+    }
+    patch_jump(elseJump);
+}
+static void for_statement()
+{
+    int loopStart = 0, exitJump = -1, bodyJump = 0, incrementStart = 0;
+    scope_begin();
+    consume(TOKEN_LEFT_PAREN, "EXPECTED ( AFTER FOR");
+    if (match(TOKEN_VAR))
+    {
+        var_decalration();
+    }
+    else
+    {
+        expression_statement();
+    }
+    loopStart = current_chunk()->count;
+    if (!match(TOKEN_SEMICOLON))
+    {
+        expression();
+        consume(TOKEN_SEMICOLON, "EXPECTED ; AFTER LOOP CONDITION");
+        exitJump = emit_jump(OP_JUMP_IF_FALSE);
+        emit_byte(OP_POP);
+    }
+    if (!match(TOKEN_RIGHT_PAREN))
+    {
+        bodyJump = emit_jump(OP_JUMP);
+        incrementStart = current_chunk()->count;
+        expression();
+        emit_byte(OP_POP);
+        consume(TOKEN_RIGHT_PAREN, "EXPECTED ) AFTER FOR");
+        emit_loop(loopStart);
+        loopStart = incrementStart;
+        patch_jump(bodyJump);
+    }
+    statement();
+    emit_loop(loopStart);
+    if (exitJump != -1)
+    {
+        patch_jump(exitJump);
+        emit_byte(OP_POP);
+    }
+    scope_end();
+}
+static void return_statement()
+{
+    if (currentCompiler->type == TYPE_SCRIPT)
+    {
+        error("CANNOT PERFORM THIS ACTION IN THE BEGINNING OF THE CODE");
+    }
+    if (match(TOKEN_SEMICOLON))
+    {
+        emit_return();
+    }
+    else
+    {
+        expression();
+        consume(TOKEN_SEMICOLON, "EXPECTED ; AFTER GIVE STATEMENT");
+        emit_byte(OP_RETURN);
+    }
+}
+static void statement()
+{
+    if (match(TOKEN_DISPLAY))
+    {
+        print_statement();
+    }
+    else if (match(TOKEN_FOR))
+    {
+        for_statement();
+    }
+    else if (match(TOKEN_IF))
+    {
+        if_statement();
+    }
+    else if (match(TOKEN_WHILE))
+    {
+        while_statement();
+    }
+    else if (match(TOKEN_LEFT_BRACE))
+    {
+        scope_begin();
+        block_statement();
+        scope_end();
+    }
+    else if (match(TOKEN_GIVE))
+    {
+        return_statement();
+    }
+    else
+    {
+        expression_statement();
+    }
+}
+static Byte identifier_constant(Node *node)
+{
+    Token *token = (Token *)node->data;
+    VmString *identifier = vmstring_copy(token->lexeme, strlen(token->lexeme));
+    return make_constant(object_val((VmObject *)identifier));
+}
+static void variable_initialize()
+{
+    if (currentCompiler->scopeDepth == 0)
+        return;
+
+    currentCompiler->locals[currentCompiler->localCount - 1].depth = currentCompiler->scopeDepth;
+}
+static void variable_define(Byte variableId)
+{
+    if (currentCompiler->scopeDepth > 0)
+    {
+        variable_initialize();
+        return;
+    }
+
+    emit_bytes(OP_DEFINE_GLOBAL, variableId);
+}
+static int identifier_equal(Token *token1, Token *token2)
+{
+    size_t token1Length = token1 == NULL || token1->lexeme == NULL ? 0 : strlen(token1->lexeme),
+           token2Length = token2 == NULL || token2->lexeme == NULL ? 0 : strlen(token2->lexeme);
+    if (token1Length != token2Length)
+    {
+        return 0;
+    }
+
+    return memcmp(token1->lexeme, token2->lexeme, token1Length) == 0;
+}
+static int variable_local_resolve(VmCompiler *compiler, Token *name)
+{
+    Local *local = NULL;
+    int i = 0;
+    for (i = compiler->localCount - 1; i >= 0; i--)
+    {
+        local = &compiler->locals[i];
+        if (identifier_equal(name, &local->name))
+        {
+            if (local->depth == -1)
+            {
+                error("Cannot read local variable in its own initializer.");
+            }
+            return i;
+        }
+    }
+
+    return -1;
+}
+static void variable_local_add(Token token)
+{
+    Local *local = NULL;
+    if (currentCompiler->localCount == BYTE_COUNT)
+    {
+        error("TOO MANY LOCAL VARS IN THIS FUNCTION");
+        return;
+    }
+    local = &currentCompiler->locals[currentCompiler->localCount++];
+    local->name = token;
+    local->depth = -1;
+}
+static void variable_declare()
+{
+    Local *local = NULL;
+    Token *token = NULL;
+    int i = 0;
+
+    if (currentCompiler->scopeDepth == 0)
+    {
+        return;
+    }
+
+    token = (Token *)parser.previous->data;
+    for (i = currentCompiler->localCount - 1; i >= 0; i--)
+    {
+        local = &currentCompiler->locals[i];
+
+        if (local->depth != -1 && local->depth < currentCompiler->scopeDepth)
+        {
+            break;
+        }
+
+        if (identifier_equal(token, &local->name))
+        {
+            error("VARIABLE WITH THIS NAME ALREADY PRESENT");
+        }
+    }
+    variable_local_add(*token);
+}
+static Byte variable_parse(const char *message)
+{
+    consume(TOKEN_IDENTIFIER, message);
+    variable_declare();
+    if (currentCompiler->scopeDepth > 0)
+    {
+        return 0;
+    }
+    return identifier_constant(parser.previous);
+}
+static void var_declaration()
+{
+    Byte global = variable_parse("EXPECTED VARIABLE NAME");
+    if (match(TOKEN_EQUAL))
+        expression();
+    else
+        emit_byte(OP_NIL);
+    consume(TOKEN_SEMICOLON, "EXPECTED ; AFTER VARIABLE DECLARATION");
+    variable_define(global);
+}
+static void function_statement(FunctionType type)
+{
+    VmCompiler compiler;
+    VmFunction *function = NULL;
+    Byte paramConstant;
+
+    compiler_init(&compiler, type);
+    scope_begin();
+
+    // Compile the parameter list.
+    consume(TOKEN_LEFT_PAREN, "EXPECTED ( AFTER FUNCTION NAME.");
+    if (!check(TOKEN_RIGHT_PAREN))
+    {
+        do
+        {
+            paramConstant = variable_parse("EXPECTED PARAMETER NAME.");
+            variable_define(paramConstant);
+
+            currentCompiler->function->arity++;
+            if (currentCompiler->function->arity > 8)
+            {
+                error("CANNOT HAVE MORE THAN * PARAMS.");
+            }
+
+        } while (match(TOKEN_COMMA));
+    }
+    consume(TOKEN_RIGHT_PAREN, "EXPECTED ) AFTER PARAMETER NAME");
+
+    // The body.
+    consume(TOKEN_LEFT_BRACE, "EXPECTED { BEFORE FUNCTION BODY.");
+    block_statement();
+
+    function = compiler_end();
+    emit_bytes(OP_CONSTANT, make_constant(object_val((VmObject *)function)));
+}
+static void func_declaration()
+{
+    Byte global = variable_parse("Expect function name.");
+    variable_initialize();
+    function_statement(TYPE_FUNCTION);
+    variable_define(global);
+}
+
+static void declaration()
+{
+    if (match(TOKEN_VAR))
+    {
+        var_declaration();
+    }
+    else if (match(TOKEN_METHOD))
+    {
+        func_declaration();
+    }
+    else
+    {
+        statement();
+    }
+
+    if (parser.panicMode)
+    {
+        synchronize();
+    }
+}
+
+VmFunction *compile(const char *code)
+{
+    VmCompiler compiler;
+    VmFunction *function = NULL;
+    Tokenization toknz = toknzr(code, 0);
+#ifdef DEBUG_PRINT_CODE
+    list_foreach(toknz.values, foreach_token);
+#endif
+    compiler_init(&compiler, TYPE_SCRIPT);
+
+    parser.last = toknz.values->last;
+    parser.current = toknz.values->head;
+    parser.previous = NULL;
+    parser.hadError = 0;
+    parser.panicMode = 0;
+
+    while (!match(TOKEN_ENDOFFILE))
+    {
+        declaration();
+    }
+
+    function = compiler_end();
+    toknzr_destroy(toknz);
+    return parser.hadError ? NULL : function;
+}
