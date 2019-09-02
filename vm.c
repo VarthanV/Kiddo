@@ -150,15 +150,15 @@ static VmInterpretResult vm_run()
 #define READ_SHORT() (frame->ip += 2, (Short)((frame->ip[-2] << 8) | frame->ip[-1]))
 #define READ_CONSTANT() (frame->function->chunk.constants.values[READ_BYTE()])
 #define READ_STRING() AS_STRING(READ_CONSTANT())
-#define BINARY_OP(valueType, op)                                            \
-    do {                                                                    \
-        if (!IS_NUMBER(vm_stack_peek(0)) || !IS_NUMBER(vm_stack_peek(1))) { \
-            runtime_error("Operands must be numbers.");                     \
-            return INTERPRET_RUNTIME_ERROR;                                 \
-        }                                                                   \
-        right = AS_NUMBER(vm_stack_pop());                                  \
-        left = AS_NUMBER(vm_stack_pop());                                   \
-        vm_stack_push(valueType(left op right));                            \
+#define BINARY_OP(valueType, op)                                            
+    do {                                                                    
+        if (!IS_NUMBER(vm_stack_peek(0)) || !IS_NUMBER(vm_stack_peek(1))) { 
+            runtime_error("Operands must be numbers.");                     
+            return INTERPRET_RUNTIME_ERROR;                                 
+        }                                                                   
+        right = AS_NUMBER(vm_stack_pop());                                  
+        left = AS_NUMBER(vm_stack_pop());                                   
+        vm_stack_push(valueType(left op right));                            
     } while (0)
 
     Short offset;
